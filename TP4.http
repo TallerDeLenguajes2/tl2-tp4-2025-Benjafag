@@ -1,0 +1,7 @@
+@TP4_HostAddress = http://localhost:5225
+
+GET {{TP4_HostAddress}}/weatherforecast/
+Accept: application/json
+Accept: multipart/form-data; boundary=<calculated when request is sent>
+
+###
