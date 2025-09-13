@@ -1,4 +1,4 @@
-@TP4_HostAddress = http://localhost:5225
+@TP4_HostAddress = http://localhost:7777
 
 GET {{TP4_HostAddress}}/weatherforecast/
 Accept: application/json

@@ -1,37 +1,39 @@
+using System.Text.Json;
 using Biblioteca;
 using Microsoft.AspNetCore.Mvc;
 
-public class AsignarPedidoDTO
-{
-  public int NroPedido { get; set; }
-  public int IdCadete { get; set; }
-}
-
-public class CambiarEstadoPedidoDTO
-{
-  public int NroPedido { get; set; }
-  public EstadoPedido EstadoPedido { get; set; }
+public class AgregarPedidoDTO {
+  public string Obs { get; set; }
+  public EstadoPedido Estado { get; set; }
+  public Cliente Cliente { get; set; }
 }
 
 [ApiController]
 [Route("[controller]")]
-public class CadeteriaController : ControllerBase
-{
-  private readonly Cadeteria _cadeteria;
+public class CadeteriaController : ControllerBase {
+  private Cadeteria _cadeteria;
+  private void GuardarPedidos(List<Pedido> pedidos) {
+    System.IO.File.WriteAllText("./Backup/pedidos.json", JsonSerializer.Serialize(pedidos));
+  }
+  private void GuardarCadetes(List<Cadete> cadetes) {
+    System.IO.File.WriteAllText("./Backup/cadetes.json", JsonSerializer.Serialize(cadetes));
+  }
 
-  public CadeteriaController(Cadeteria cadeteria)
+  public CadeteriaController()
   {
+    var datos = new AccesoADatosJSON();
+    Cadeteria cadeteria = datos.CargarCadeteria("./Backup/cadeteria.json", "./Backup/cadetes.json", "./Backup/pedidos.json");
     _cadeteria = cadeteria;
   }
 
-  [HttpGet("pedidos")]
+  [HttpGet("Pedidos")]
   public ActionResult<List<Pedido>> GetPedidos() => Ok(_cadeteria.ListadoPedidos);
 
-  [HttpGet("cadetes")]
+  [HttpGet("Cadetes")]
   public ActionResult<List<Cadete>> GetCadetes() => Ok(_cadeteria.ListadoCadetes);
 
   [HttpPost("AgregarPedido")]
-  public IActionResult AgregarPedido([FromBody] Pedido pedido)
+  public IActionResult AgregarPedido([FromForm] AgregarPedidoDTO pedido)
   {
     if (pedido == null || pedido.Cliente == null ||
         string.IsNullOrEmpty(pedido.Obs) ||
@@ -41,80 +43,83 @@ public class CadeteriaController : ControllerBase
         pedido.Cliente.Telefono == 0)
       return BadRequest("Faltan datos");
 
-    if (_cadeteria.ListadoPedidos.Any(p => p.Nro == pedido.Nro))
-      return Conflict($"Ya existe un pedido con el numero {pedido.Nro}");
-
     _cadeteria.DarAltaPedido(pedido.Obs, pedido.Cliente.Nombre, pedido.Cliente.Direccion, pedido.Cliente.Telefono, pedido.Cliente.DatosReferenciaDireccion);
-
-    if (pedido.CadeteAsociado != 0 && _cadeteria.ListadoCadetes.Any(c => c.Id == pedido.CadeteAsociado))
-      _cadeteria.AsignarPedido(pedido.Nro, pedido.CadeteAsociado);
-
+    GuardarPedidos(_cadeteria.ListadoPedidos);
     return Ok(_cadeteria.ListadoPedidos.Last());
   }
 
   [HttpPut("AsignarPedido")]
-  public IActionResult AsignarPedido([FromBody] AsignarPedidoDTO info)
+  public IActionResult AsignarPedido([FromForm] int nroPedido, [FromForm] int idCadete)
   {
-    if (info.IdCadete == 0 || info.NroPedido == 0)
+    if (idCadete == 0 || nroPedido == 0)
       return BadRequest("Faltan datos");
 
-    if (!_cadeteria.ListadoCadetes.Any(c => c.Id == info.IdCadete))
-      return NotFound($"No existe cadete con el id {info.IdCadete}");
+    if (!_cadeteria.ListadoCadetes.Any(c => c.Id == idCadete))
+      return NotFound($"No existe cadete con el id {idCadete}");
 
-    Pedido pedido = _cadeteria.ListadoPedidos.Find(p => p.Nro == info.NroPedido);
+    Pedido pedido = _cadeteria.ListadoPedidos.Find(p => p.Nro == nroPedido);
 
     if (pedido == null)
-      return NotFound($"No existe pedido con el nro {info.NroPedido}");
+      return NotFound($"No existe pedido con el nro {nroPedido}");
 
-    if (pedido.CadeteAsociado != 0)
-      return Conflict($"El pedido con el nro {info.NroPedido} ya se encuentra asignado");
+    if (pedido.CadeteAsociado != null)
+      return Conflict($"El pedido con el nro {nroPedido} ya se encuentra asignado");
 
-    _cadeteria.AsignarPedido(info.NroPedido, info.IdCadete);
+    _cadeteria.AsignarPedido(nroPedido, idCadete);
+
+    GuardarPedidos(_cadeteria.ListadoPedidos);
+    GuardarCadetes(_cadeteria.ListadoCadetes);
+
     return NoContent();
   }
 
   [HttpPut("CambiarEstadoPedido")]
-  public IActionResult CambiarEstadoPedido([FromBody] CambiarEstadoPedidoDTO info)
+  public IActionResult CambiarEstadoPedido([FromForm] int nroPedido)
   {
-    if (info.NroPedido == 0)
+    if (nroPedido == 0)
       return BadRequest("Faltan datos");
 
-    if (info.EstadoPedido != EstadoPedido.Realizado)
-      return BadRequest($"Estado incorrecto");
-
-    Pedido pedido = _cadeteria.ListadoPedidos.Find(p => p.Nro == info.NroPedido);
+    Pedido pedido = _cadeteria.ListadoPedidos.Find(p => p.Nro == nroPedido);
 
     if (pedido == null)
-      return NotFound($"No existe pedido con el nro {info.NroPedido}");
+      return NotFound($"No existe pedido con el nro {nroPedido}");
 
     if (pedido.Estado == EstadoPedido.Realizado)
-      return Conflict($"El pedido {info.NroPedido} ya se encuentra realizado");
+      return Conflict($"El pedido {nroPedido} ya se encuentra realizado");
 
-    if (pedido.CadeteAsociado == 0)
-      return Conflict($"El pedido {info.NroPedido} no se encuentra asignado a ningun cadete");
+    if (pedido.CadeteAsociado == null)
+      return Conflict($"El pedido {nroPedido} no se encuentra asignado a ningun cadete");
 
     _cadeteria.PedidoCompletado(pedido.Nro);
+
+    GuardarPedidos(_cadeteria.ListadoPedidos);
+    GuardarCadetes(_cadeteria.ListadoCadetes);
+
     return NoContent();
   }
 
   [HttpPut("CambiarCadetePedido")]
-  public IActionResult CambiarCadetePedido([FromBody] AsignarPedidoDTO info)
+  public IActionResult CambiarCadetePedido([FromForm] int idCadete, [FromForm] int nroPedido)
   {
-    if (info.IdCadete == 0 || info.NroPedido == 0)
+    if (idCadete == 0 || nroPedido == 0)
       return BadRequest("Faltan datos");
 
-    if (!_cadeteria.ListadoCadetes.Any(c => c.Id == info.IdCadete))
-      return NotFound($"No existe cadete con el id {info.IdCadete}");
+    if (!_cadeteria.ListadoCadetes.Any(c => c.Id == idCadete))
+      return NotFound($"No existe cadete con el id {idCadete}");
 
-    Pedido pedido = _cadeteria.ListadoPedidos.Find(p => p.Nro == info.NroPedido);
+    Pedido pedido = _cadeteria.ListadoPedidos.Find(p => p.Nro == nroPedido);
 
     if (pedido == null)
-      return NotFound($"No existe pedido con el nro {info.NroPedido}");
+      return NotFound($"No existe pedido con el nro {nroPedido}");
 
     if (pedido.Estado == EstadoPedido.Realizado)
       return Conflict($"El pedido {pedido.Nro} ya se encuentra realizado");
 
-    _cadeteria.ReasignarPedido(pedido.Nro, info.IdCadete);
+    _cadeteria.ReasignarPedido(pedido.Nro, idCadete);
+
+    GuardarPedidos(_cadeteria.ListadoPedidos);
+    GuardarCadetes(_cadeteria.ListadoCadetes);
+
     return NoContent();
   }
 }
